@@ -212,17 +212,27 @@ def p_sha1(client_b64_bytes, server_b64_bytes):
 
 def _add_cert_to_store(store, cert):
     from OpenSSL.crypto import X509StoreContext, X509StoreContextError, Error as OpenSSLCryptoError
+
+    # Added by Terry to capture cert expiry
+    cert_expired = False
     try:
         X509StoreContext(store, cert).verify_certificate()
+
     except X509StoreContextError as e:
-        raise InvalidCertificate(e)
+        # Terry: If certificate has expired, change cert_expired status to update functions outside
+        if 'certificate has expired' in str(e):
+            cert_expired = True
+        else:
+            raise InvalidCertificate(e)
     try:
+        # This has already been changed
         store.add_cert(cert)
-        return cert
+        return (cert, cert_expired)
     except OpenSSLCryptoError as e:
         if e.args == ([('x509 certificate routines', 'X509_STORE_add_cert', 'cert already in hash table')],):
             raise RedundantCert(e)
         raise
+
 
 
 def verify_x509_cert_chain(cert_chain, ca_pem_file=None, ca_path=None):
@@ -247,7 +257,8 @@ def verify_x509_cert_chain(cert_chain, ca_pem_file=None, ca_path=None):
     while len(certs) > 0:
         for cert in certs:
             try:
-                end_of_chain = _add_cert_to_store(store, cert)
+                #Terry: changed to capture cert expiry
+                end_of_chain, cert_expired = _add_cert_to_store(store, cert)
                 certs.remove(cert)
                 break
             except RedundantCert:
@@ -259,4 +270,5 @@ def verify_x509_cert_chain(cert_chain, ca_pem_file=None, ca_path=None):
                 last_error = e
         else:
             raise last_error
-    return end_of_chain
+    #Terry: Changed to capture cert expiry
+    return end_of_chain, cert_expired

@@ -791,6 +791,9 @@ class XMLVerifier(XMLSignatureProcessor):
                                       algorithm=c14n_algorithm,
                                       inclusive_ns_prefixes=inclusive_ns_prefixes)
 
+        #Terry: Added to capture cert expiry
+        cert_expired = None
+
         # TODO: if both X509Data and KeyValue is present, match one against the other and raise an error on mismatch
         if x509_data is not None or self.require_x509:
             from OpenSSL.crypto import load_certificate, X509, FILETYPE_PEM, verify, Error as OpenSSLCryptoError
@@ -812,7 +815,7 @@ class XMLVerifier(XMLSignatureProcessor):
                         msg += " (X509SubjectName, X509SKI are not supported)"
                         raise InvalidInput(msg)
                 cert_chain = [load_certificate(FILETYPE_PEM, add_pem_header(cert)) for cert in certs]
-                signing_cert = verify_x509_cert_chain(cert_chain, ca_pem_file=ca_pem_file, ca_path=ca_path)
+                signing_cert, cert_expired = verify_x509_cert_chain(cert_chain, ca_pem_file=ca_pem_file, ca_path=ca_path)
             elif isinstance(self.x509_cert, X509):
                 signing_cert = self.x509_cert
             else:
@@ -886,6 +889,10 @@ class XMLVerifier(XMLSignatureProcessor):
         if type(expect_references) is int and len(verify_results) != expect_references:
             msg = "Expected to find {} references, but found {}"
             raise InvalidSignature(msg.format(expect_references, len(verify_results)))
+
+        # Added by Terry to update functions outside if cert has expired
+        if cert_expired is not None:
+            return (verify_results if expect_references > 1 else verify_results[0], cert_expired)
 
         return verify_results if expect_references > 1 else verify_results[0]
 
